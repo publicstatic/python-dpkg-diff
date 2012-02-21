@@ -1,0 +1,94 @@
+#!/usr/bin/python
+import re
+import argparse 
+
+fname1 = 'dpkg1.log'
+fname2 = 'dpkg2.log'
+
+
+class Package:
+    def __init__(self, name, ver, descr):
+        self.name = name
+        self.ver = ver
+        self.descr = descr
+
+
+def readDpkgLog(logname):
+    f = open(logname, 'r');
+    packages = []
+    dropped = 0
+    for line in f:
+        installed = re.match('^ii', line)
+        if installed:
+            m = re.match('^[uirph][hi]\s+(?P<name>[+.0-9a-zA-Z_-]+)\s+(?P<version>(?:([^ :]+):)?([^ ]*?)(?:-([^ -]+))?)\s+(?P<description>.*)', line);
+            if m:
+                packages.append(Package(m.group('name'), m.group('version'), m.group('description')))
+            else:
+                dropped += 1
+    print ('From %(filename)s: %(read)s packages read, %(dropped)d packages dropped' % {"filename":logname, "read": len(packages), "dropped": dropped})
+    return packages    
+
+
+parser = argparse.ArgumentParser(description = 'Compare two dpkg reports')
+parser.add_argument('fname1', type=str, help='dpkg -l from host1')
+parser.add_argument('fname2', type=str, help='dpkg -l from host2')
+args = parser.parse_args()
+
+#read logs
+packages1 = readDpkgLog(args.fname1)
+packages2 = readDpkgLog(args.fname2)
+
+#index packages
+
+class PackagePair:
+    def __init__(self):
+        self.pack1 = None
+        self.pack2 = None
+
+
+pairs = {}
+
+for package in packages1:
+    pair = pairs.setdefault(package.name, PackagePair())
+    pair.pack1 = package
+    
+for package in packages2:
+    pair = pairs.setdefault(package.name, PackagePair())
+    pair.pack2 = package
+      
+
+onlyOnHost1 = {}
+onlyOnHost2 = {}
+different = {}
+exactMatch = {}
+
+for p in pairs.values():
+    if p.pack2 == None:                 #installed only on host1
+        onlyOnHost1[p.pack1.name] = p.pack1
+    elif p.pack1 == None:               #installed only on host2
+        onlyOnHost2[p.pack2.name] = p.pack2
+    else:                               #installed on both hosts
+        if p.pack1.ver == p.pack2.ver:  # versions match
+            exactMatch[p.pack1.name] = p.pack1.ver
+        else:                           # different versions 
+            different[p.pack1.name] = (p.pack1, p.pack2)
+
+#generate report
+
+if onlyOnHost1:
+    print '\ninstalled only on host1: '
+    for (a,b) in sorted(onlyOnHost1.items()):
+        print '%(package)s=%(ver)s' % {'package':a, 'ver':b.ver}
+
+if onlyOnHost2:
+    print '\ninstalled only on host2: '
+    for (a,b) in sorted(onlyOnHost2.items()):
+        print '%(package)s=%(ver)s' % {'package':a, 'ver':b.ver}
+
+if different:
+    print '\ndifferent versions on host1 and host2: '
+    for (a, (h1, h2)) in sorted(different.items()):
+        print '%(package)s on host1 is %(host1)s, but host2 has %(host2)s' % {'package':a, 'host1':h1.ver, 'host2':h2.ver}
+
+
+
