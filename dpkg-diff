@@ -18,7 +18,7 @@ def readDpkgLog(logname):
     packages = []
     dropped = 0
     for line in f:
-        installed = re.match('^ii', line)
+        installed = re.match('^[uirph][hi]', line)
         if installed:
             m = re.match('^[uirph][hi]\s+(?P<name>[+.0-9a-zA-Z_-]+)\s+(?P<version>(?:([^ :]+):)?([^ ]*?)(?:-([^ -]+))?)\s+(?P<description>.*)', line);
             if m:
